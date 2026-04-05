@@ -33,13 +33,13 @@ ctk.set_default_color_theme("blue")
 class GammaProApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("GammaPro v1.02 - Processamento de Dados de Gamaespectrometria")
+        self.title("GammaPro v1.03 - Processamento de Dados de Gamaespectrometria")
         self.geometry("1400x900")
         self.data = None
         self.df_processed = None
         self.output_dir = ""
         self.setup_ui()
-        print("[GammaPro v1.02] Interface criada com sucesso!")
+        print("[GammaPro v1.03] Interface criada com sucesso!")
     
     def setup_ui(self):
         self.grid_columnconfigure(1, weight=1)
@@ -845,9 +845,9 @@ K ANÔMALO (z-score):
             
             ncols = int((x_max - x_min) / cell)
             nrows = int((y_max - y_min) / cell)
-            
+
             xi = np.linspace(x_min, x_max, ncols)
-            yi = np.linspace(y_min, y_max, nrows)
+            yi = np.linspace(y_max, y_min, nrows)
             xi, yi = np.meshgrid(xi, yi)
             
             vals = df[var_name].values
@@ -953,19 +953,19 @@ K ANÔMALO (z-score):
                 mask = ~self.df_processed['X'].isna() & ~self.df_processed['Y'].isna()
                 df = self.df_processed[mask].copy()
                 
-                x_min, x_max = df['X'].min() - 1000, df['X'].max() + 1000
-                y_min, y_max = df['Y'].min() - 1000, df['Y'].max() + 1000
-                
-                ncols = int((x_max - x_min) / cell)
-                nrows = int((y_max - y_min) / cell)
-                
-                xi = np.linspace(x_min, x_max, ncols)
-                yi = np.linspace(y_min, y_max, nrows)
-                xi, yi = np.meshgrid(xi, yi)
-                
-                vars_dict = {}
-                if self.var_k.get():
-                    vars_dict['K'] = df['K_display'].values
+            x_min, x_max = df['X'].min() - 1000, df['X'].max() + 1000
+            y_min, y_max = df['Y'].min() - 1000, df['Y'].max() + 1000
+            
+            ncols = int((x_max - x_min) / cell)
+            nrows = int((y_max - y_min) / cell)
+            
+            xi = np.linspace(x_min, x_max, ncols)
+            yi = np.linspace(y_max, y_min, nrows)
+            xi, yi = np.meshgrid(xi, yi)
+            
+            vars_dict = {}
+            if self.var_k.get():
+                vars_dict['K'] = df['K_display'].values
                 if self.var_eu.get():
                     vars_dict['eU'] = df['eU_display'].values
                 if self.var_eth.get():
@@ -1053,7 +1053,7 @@ K ANÔMALO (z-score):
 
 
 def main():
-    print("Iniciando GammaPro v1.02...")
+    print("Iniciando GammaPro v1.03...")
     try:
         app = GammaProApp()
         app.mainloop()
