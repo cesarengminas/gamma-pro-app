@@ -1,0 +1,13 @@
+# GammaPro - Processamento de Dados de Gammametria
+# Requisitos do projeto
+
+pandas>=1.5.0
+numpy>=1.23.0
+matplotlib>=3.6.0
+seaborn>=0.12.0
+scipy>=1.9.0
+pyproj>=3.4.0
+rasterio>=1.3.0
+customtkinter>=5.1.0
+Pillow>=9.3.0
+openpyxl>=3.0.0
