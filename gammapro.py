@@ -33,13 +33,13 @@ ctk.set_default_color_theme("blue")
 class GammaProApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("GammaPro v1.01 - Processamento de Dados de Gamaespectrometria")
+        self.title("GammaPro v1.02 - Processamento de Dados de Gamaespectrometria")
         self.geometry("1400x900")
         self.data = None
         self.df_processed = None
         self.output_dir = ""
         self.setup_ui()
-        print("[GammaPro v1.01] Interface criada com sucesso!")
+        print("[GammaPro v1.02] Interface criada com sucesso!")
     
     def setup_ui(self):
         self.grid_columnconfigure(1, weight=1)
@@ -244,6 +244,7 @@ Y: {self.data['Y'].min():.2f} a {self.data['Y'].max():.2f}
         self.var_select.grid(row=0, column=1, padx=5)
         
         ctk.CTkButton(sel_frame, text="🔄 Atualizar", command=lambda: self.update_plot(f3)).grid(row=0, column=2, padx=10)
+        ctk.CTkButton(sel_frame, text="💾 GeoTIFF", command=lambda: self.export_current_map(self.var_select.get(), self.data)).grid(row=0, column=3, padx=10)
         
         # Frame do gráfico
         self.plot_frame = ctk.CTkFrame(f3)
@@ -305,6 +306,7 @@ Y: {self.data['Y'].min():.2f} a {self.data['Y'].max():.2f}
         self.eda_var_select.grid(row=0, column=1, padx=5)
         
         ctk.CTkButton(sel_frame, text="🔄 Plotar", command=lambda: self.update_eda_plot(nb, numeric_cols)).grid(row=0, column=2, padx=10)
+        ctk.CTkButton(sel_frame, text="💾 GeoTIFF", command=lambda: self.export_current_map(self.eda_var_select.get(), self.data)).grid(row=0, column=3, padx=10)
         
         # Opções de corte
         opt_frame = ctk.CTkFrame(f0)
@@ -634,6 +636,7 @@ K ANÔMALO (z-score):
         self.idx_var_select.grid(row=0, column=1, padx=5)
         
         ctk.CTkButton(sel_frame, text="🔄 Plotar", command=self.plot_indices).grid(row=0, column=2, padx=10)
+        ctk.CTkButton(sel_frame, text="💾 GeoTIFF", command=self.export_current_indices_map).grid(row=0, column=3, padx=10)
         
         self.idx_plot_frame = ctk.CTkFrame(self.indices_plot_frame)
         self.idx_plot_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -771,6 +774,98 @@ K ANÔMALO (z-score):
         ]
         ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
     
+    def export_current_map(self, var_name, df_source):
+        if df_source is None or var_name is None:
+            return
+        
+        output_dir = filedialog.askdirectory(title="Selecionar diretório para salvar")
+        if not output_dir:
+            return
+        
+        try:
+            df = df_source.dropna(subset=['X', 'Y', var_name])
+            if len(df) == 0:
+                messagebox.showerror("Erro", "Sem dados para exportar")
+                return
+            
+            cell = float(self.entry_cell.get())
+            epsg = int(self.entry_epsg.get())
+            
+            x_min, x_max = df['X'].min() - 1000, df['X'].max() + 1000
+            y_min, y_max = df['Y'].min() - 1000, df['Y'].max() + 1000
+            
+            ncols = int((x_max - x_min) / cell)
+            nrows = int((y_max - y_min) / cell)
+            
+            xi = np.linspace(x_min, x_max, ncols)
+            yi = np.linspace(y_min, y_max, nrows)
+            xi, yi = np.meshgrid(xi, yi)
+            
+            vals = df[var_name].values
+            grid = griddata((df['X'].values, df['Y'].values), vals, (xi, yi), method='cubic')
+            
+            fname = os.path.join(output_dir, f"gamma_{var_name}_{int(cell)}m.tif")
+            tr = from_origin(x_min, y_max, cell, cell)
+            with rasterio.open(fname, 'w', driver='GTiff', height=grid.shape[0], width=grid.shape[1],
+                              count=1, dtype=np.float32, crs=pyproj.CRS.from_epsg(epsg), transform=tr, nodata=np.nan) as dst:
+                dst.write(grid.astype(np.float32), 1)
+            
+            messagebox.showinfo("Sucesso", f"GeoTIFF salvo:\n{fname}")
+            print(f"[GammaPro] GeoTIFF salvo: {fname}")
+            
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+            print(f"[GammaPro] Erro: {e}")
+    
+    def export_current_indices_map(self):
+        if self.df_processed is None:
+            return
+        
+        var_name = self.idx_var_select.get()
+        
+        if var_name == 'Ternario':
+            messagebox.showinfo("Aviso", "Mapa ternário não pode ser exportado como GeoTIFF")
+            return
+        
+        output_dir = filedialog.askdirectory(title="Selecionar diretório para salvar")
+        if not output_dir:
+            return
+        
+        try:
+            df = self.df_processed.dropna(subset=['X', 'Y', var_name])
+            if len(df) == 0:
+                messagebox.showerror("Erro", "Sem dados para exportar")
+                return
+            
+            cell = float(self.entry_cell.get())
+            epsg = int(self.entry_epsg.get())
+            
+            x_min, x_max = df['X'].min() - 1000, df['X'].max() + 1000
+            y_min, y_max = df['Y'].min() - 1000, df['Y'].max() + 1000
+            
+            ncols = int((x_max - x_min) / cell)
+            nrows = int((y_max - y_min) / cell)
+            
+            xi = np.linspace(x_min, x_max, ncols)
+            yi = np.linspace(y_min, y_max, nrows)
+            xi, yi = np.meshgrid(xi, yi)
+            
+            vals = df[var_name].values
+            grid = griddata((df['X'].values, df['Y'].values), vals, (xi, yi), method='cubic')
+            
+            fname = os.path.join(output_dir, f"gamma_{var_name}_{int(cell)}m.tif")
+            tr = from_origin(x_min, y_max, cell, cell)
+            with rasterio.open(fname, 'w', driver='GTiff', height=grid.shape[0], width=grid.shape[1],
+                              count=1, dtype=np.float32, crs=pyproj.CRS.from_epsg(epsg), transform=tr, nodata=np.nan) as dst:
+                dst.write(grid.astype(np.float32), 1)
+            
+            messagebox.showinfo("Sucesso", f"GeoTIFF salvo:\n{fname}")
+            print(f"[GammaPro] GeoTIFF salvo: {fname}")
+            
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+            print(f"[GammaPro] Erro: {e}")
+    
     def export_data(self):
         if self.df_processed is None:
             return
@@ -804,14 +899,32 @@ K ANÔMALO (z-score):
         self.var_eu_k = ctk.BooleanVar(value=True)
         self.var_eth_k = ctk.BooleanVar(value=True)
         
+        self.var_indice_lat = ctk.BooleanVar(value=False)
+        self.var_calor = ctk.BooleanVar(value=False)
+        self.var_fator_f = ctk.BooleanVar(value=False)
+        self.var_eU_anomalo = ctk.BooleanVar(value=False)
+        self.var_eTh_anomalo = ctk.BooleanVar(value=False)
+        self.var_K_anomalo = ctk.BooleanVar(value=False)
+        
         ctk.CTkLabel(opt_frame, text="Variáveis para GeoTIFF:").pack(pady=(20, 5))
         
+        ctk.CTkLabel(opt_frame, text="Básicas:").pack(pady=(5, 0))
         ctk.CTkCheckBox(opt_frame, text="K (%)", variable=self.var_k).pack(pady=2)
         ctk.CTkCheckBox(opt_frame, text="eU (ppm)", variable=self.var_eu).pack(pady=2)
         ctk.CTkCheckBox(opt_frame, text="eTh (ppm)", variable=self.var_eth).pack(pady=2)
+        
+        ctk.CTkLabel(opt_frame, text="Razões:").pack(pady=(5, 0))
         ctk.CTkCheckBox(opt_frame, text="eU/eTh", variable=self.var_eu_eth).pack(pady=2)
         ctk.CTkCheckBox(opt_frame, text="eU/K", variable=self.var_eu_k).pack(pady=2)
         ctk.CTkCheckBox(opt_frame, text="eTh/K", variable=self.var_eth_k).pack(pady=2)
+        
+        ctk.CTkLabel(opt_frame, text="Índices:").pack(pady=(5, 0))
+        ctk.CTkCheckBox(opt_frame, text="Índice Laterítico", variable=self.var_indice_lat).pack(pady=2)
+        ctk.CTkCheckBox(opt_frame, text="Calor Radiogênico", variable=self.var_calor).pack(pady=2)
+        ctk.CTkCheckBox(opt_frame, text="Fator f", variable=self.var_fator_f).pack(pady=2)
+        ctk.CTkCheckBox(opt_frame, text="eU Anômalo", variable=self.var_eU_anomalo).pack(pady=2)
+        ctk.CTkCheckBox(opt_frame, text="eTh Anômalo", variable=self.var_eTh_anomalo).pack(pady=2)
+        ctk.CTkCheckBox(opt_frame, text="K Anômalo", variable=self.var_K_anomalo).pack(pady=2)
         
         ctk.CTkButton(opt_frame, text="💾 Exportar", command=self.do_export, height=40).pack(pady=20)
     
@@ -870,6 +983,49 @@ K ANÔMALO (z-score):
                 if self.var_eth_k.get() and 'eTh' in grids and 'K' in grids:
                     grids['eTh_K_ratio'] = np.divide(grids['eTh'], grids['K'], out=np.full_like(grids['eTh'], np.nan), where=grids['K'] != 0)
                 
+                if self.var_indice_lat.get():
+                    mask_idx = ~df['Indice_Lateritico'].isna()
+                    if mask_idx.sum() > 0:
+                        grids['Indice_Lateritico'] = griddata(
+                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
+                            df.loc[mask_idx, 'Indice_Lateritico'].values, (xi, yi), method='cubic'
+                        )
+                if self.var_calor.get():
+                    mask_idx = ~df['Calor_Radiogenico'].isna()
+                    if mask_idx.sum() > 0:
+                        grids['Calor_Radiogenico'] = griddata(
+                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
+                            df.loc[mask_idx, 'Calor_Radiogenico'].values, (xi, yi), method='cubic'
+                        )
+                if self.var_fator_f.get():
+                    mask_idx = ~df['Fator_f'].isna()
+                    if mask_idx.sum() > 0:
+                        grids['Fator_f'] = griddata(
+                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
+                            df.loc[mask_idx, 'Fator_f'].values, (xi, yi), method='cubic'
+                        )
+                if self.var_eU_anomalo.get():
+                    mask_idx = ~df['eU_anomalo'].isna()
+                    if mask_idx.sum() > 0:
+                        grids['eU_anomalo'] = griddata(
+                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
+                            df.loc[mask_idx, 'eU_anomalo'].values, (xi, yi), method='cubic'
+                        )
+                if self.var_eTh_anomalo.get():
+                    mask_idx = ~df['eTh_anomalo'].isna()
+                    if mask_idx.sum() > 0:
+                        grids['eTh_anomalo'] = griddata(
+                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
+                            df.loc[mask_idx, 'eTh_anomalo'].values, (xi, yi), method='cubic'
+                        )
+                if self.var_K_anomalo.get():
+                    mask_idx = ~df['K_anomalo'].isna()
+                    if mask_idx.sum() > 0:
+                        grids['K_anomalo'] = griddata(
+                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
+                            df.loc[mask_idx, 'K_anomalo'].values, (xi, yi), method='cubic'
+                        )
+                
                 for name, grid in grids.items():
                     fname = os.path.join(self.output_dir, f"gamma_{name}_{int(cell)}m.tif")
                     tr = from_origin(x_min, y_max, cell, cell)
@@ -897,7 +1053,7 @@ K ANÔMALO (z-score):
 
 
 def main():
-    print("Iniciando GammaPro v1.01...")
+    print("Iniciando GammaPro v1.02...")
     try:
         app = GammaProApp()
         app.mainloop()
