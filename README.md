@@ -8,12 +8,15 @@ Aplicação desktop moderna para processamento, análise e exportação de dados
 ## ✨ Funcionalidades
 
 - 📂 **Carregar arquivos** - Suporte a arquivos .XYZ de dados gammetricos
-- 📊 **Visualização de dados** - Tabela de dados, atributos e mapa espacial interativo
+- 📊 **Ver Dados** - Tabela de dados, atributos e mapa espacial interativo
 - 📈 **Análise Exploratória** - Histograma, boxplot, estatísticas e distribuição espacial
-- ✂️ **Corte de Outliers** - Três métodos:
-  - Corte por porcentagem automática
-  - Limites manuais (inferior/superior) para cada variável
-  - Reset dos dados originais
+- ⚙️ **Processar Dados** - Tratamento de valores negativos e sobre água
+- 📐 **Índices e Razões** - Cálculo de:
+  - Índice Laterítico (eTh / eU × K)
+  - Calor Radiogênico
+  - Fator f (eTh/eU)
+  - Mapa Ternário RGB
+  - eU, eTh, K Anômalos (z-score)
 - 💾 **Exportação** - Múltiplos formatos:
   - CSV
   - Excel (.xlsx)
@@ -39,8 +42,8 @@ openpyxl>=3.0.0
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/seu-usuario/gamma-pro.git
-cd gamma-pro
+git clone https://github.com/cesarengminas/gamma-pro-app.git
+cd gamma-pro-app
 ```
 
 2. Instale as dependências:
@@ -54,23 +57,32 @@ pip install -r requirements.txt
 python gammapro.py
 ```
 
+Ou clique duas vezes em `run.bat` (Windows)
+
 ## 📁 Estrutura do Projeto
 
 ```
-gamma-pro/
+gamma-pro-app/
 ├── gammapro.py       # Aplicação principal
 ├── requirements.txt  # Dependências
 ├── README.md         # Este arquivo
-└── iniciar.bat       # Script para Windows
+├── run.bat           # Script para Windows
+└── run_gammapro.py   # Script alternativo
 ```
 
 ## 📊 Interface
 
-A aplicação possui interface gráfica moderna com:
-- Sidebar para navegação
-- Abas para diferentes funcionalidades
-- Visualização interativa de dados
-- Opções de exportação flexíveis
+### Ver Dados
+![Ver Dados](img/ver_dados.jpg)
+Visualização de dados em tabela, atributos estatísticos e mapa espacial interativo.
+
+### Análise Exploratória
+![EDA](img/EDA.jpg)
+Análise exploratória com histogramas, boxplots, estatísticas e distribuição espacial.
+
+### Índices e Razões
+![Índices e Razões](img/Indices_Razoes.jpg)
+Visualização do Índice Laterítico, Calor Radiogênico, Fator f, Mapa Ternário e valores anômalos.
 
 ## 📝 Licença
 
@@ -78,4 +90,4 @@ MIT License
 
 ## Autor
 
-Cesar Terra
+César Ferreira
