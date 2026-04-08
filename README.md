@@ -1,4 +1,4 @@
-# GammaPro - Processamento de Dados de Gamaespectrometria
+# GammaPro - Processamento de Dados de Gamaespectrometria v1.03
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
@@ -12,13 +12,19 @@ Aplicação desktop moderna para processamento, análise e exportação de dados
 - 📈 **Análise Exploratória** - Histograma, boxplot, estatísticas e distribuição espacial
 - ⚙️ **Processar Dados** - Tratamento de valores negativos e sobre água
 - 📐 **Índices e Razões** - Cálculo de:
-  - Índice Laterítico (eTh / eU × K)
+  - Índice Laterítico ((eTh × eU) / K²)
   - Calor Radiogênico
   - Fator f (eTh/eU)
-  - Mapa Ternário RGB
+  - Fator F ((K × eU) / eTh)
+  - Kd (K / eTh) e Ud (eU / eTh)
+  - Mapa Ternário RGB (K, eU, eTh)
+  - Mapa Ternário de Alteração Hidrotermal (F, Kd, Ud)
   - eU, eTh, K Anômalos (z-score)
+- 📷 **Exportar JPEG** - Exportar mapas espaciais como imagens JPEG
+- 📏 **Escala Log** - Alternar entre escala normal e log10 nos gráficos
+- 🔄 **Reiniciar** - Limpar dados e voltar à tela inicial
 - 💾 **Exportação** - Múltiplos formatos:
-  - CSV
+  - CSV (seleção de colunas)
   - Excel (.xlsx)
   - GeoTIFF (grids interpolados)
 - 🎨 **Visualização** - Paleta de cores Turbo (valores baixos = azul/frio, altos = vermelho/quente)
