@@ -69,13 +69,16 @@ class GammaProApp(ctk.CTk):
         self.btn_indices.grid(row=5, column=0, padx=20, pady=10)
         
         self.btn_exportar = ctk.CTkButton(self.sidebar, text="💾 Exportar", command=self.export_data, height=40, state="disabled")
-        self.btn_exportar.grid(row=6, column=0, padx=20, pady=10)
+        self.btn_exportar.grid(row=6, column=0, padx=20, pady=20)
         
         self.btn_sair = ctk.CTkButton(self.sidebar, text="❌ Sair", command=self.quit, height=40, fg_color="#dc3545")
         self.btn_sair.grid(row=7, column=0, padx=20, pady=20)
         
+        self.btn_reiniciar = ctk.CTkButton(self.sidebar, text="🔄 Reiniciar", command=self.reiniciar_app, height=40, fg_color="#6c757d")
+        self.btn_reiniciar.grid(row=8, column=0, padx=20, pady=(0, 20))
+        
         self.settings_frame = ctk.CTkFrame(self.sidebar)
-        self.settings_frame.grid(row=8, column=0, padx=20, pady=10, sticky="ew")
+        self.settings_frame.grid(row=9, column=0, padx=20, pady=10, sticky="ew")
         
         ctk.CTkLabel(self.settings_frame, text="Configurações", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=10, pady=(10, 5))
         ctk.CTkLabel(self.settings_frame, text="Célula (m):").grid(row=1, column=0, padx=10, sticky="w")
@@ -238,13 +241,20 @@ Y: {self.data['Y'].min():.2f} a {self.data['Y'].max():.2f}
         
         ctk.CTkLabel(sel_frame, text="Variável:").grid(row=0, column=0, padx=5)
         
-        self.vars_to_plot = ['KPERC', 'eU', 'eTH', 'THKRAZAO', 'UKRAZAO', 'UTHRAZAO', 'CTB', 'KB', 'UB', 'THB']
+        numeric_cols = self.data.select_dtypes(include=[np.number]).columns.tolist()
+        self.vars_to_plot = numeric_cols
         self.var_select = ctk.CTkComboBox(sel_frame, values=self.vars_to_plot, state="readonly")
         self.var_select.set("KPERC")
         self.var_select.grid(row=0, column=1, padx=5)
         
         ctk.CTkButton(sel_frame, text="🔄 Atualizar", command=lambda: self.update_plot(f3)).grid(row=0, column=2, padx=10)
         ctk.CTkButton(sel_frame, text="💾 GeoTIFF", command=lambda: self.export_current_map(self.var_select.get(), self.data)).grid(row=0, column=3, padx=10)
+        ctk.CTkButton(sel_frame, text="📷 JPEG", command=self.export_spatial_jpeg).grid(row=0, column=4, padx=10)
+        
+        ctk.CTkLabel(sel_frame, text="Escala:").grid(row=0, column=5, padx=(20, 5))
+        self.spatial_scale_var = ctk.StringVar(value="normal")
+        ctk.CTkRadioButton(sel_frame, text="Normal", variable=self.spatial_scale_var, value="normal").grid(row=0, column=6, padx=5)
+        ctk.CTkRadioButton(sel_frame, text="log10", variable=self.spatial_scale_var, value="log").grid(row=0, column=7, padx=5)
         
         # Frame do gráfico
         self.plot_frame = ctk.CTkFrame(f3)
@@ -252,7 +262,7 @@ Y: {self.data['Y'].min():.2f} a {self.data['Y'].max():.2f}
         
         self.update_plot(f3)
     
-    def update_plot(self, parent_frame):
+    def update_plot(self, parent_frame, save_path=None):
         for w in self.plot_frame.winfo_children():
             w.destroy()
         
@@ -263,19 +273,55 @@ Y: {self.data['Y'].min():.2f} a {self.data['Y'].max():.2f}
             ctk.CTkLabel(self.plot_frame, text="Sem dados para plotar").pack()
             return
         
-        vmin, vmax = df[var_name].quantile(0.02), df[var_name].quantile(0.98)
+        use_log = self.spatial_scale_var.get() == "log"
         
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sc = ax.scatter(df['X'], df['Y'], c=df[var_name], cmap='turbo', s=2, vmin=vmin, vmax=vmax)
-        ax.set_title(f'Distribuição Espacial de {var_name}')
+        if use_log:
+            df_plot = df[df[var_name] > 0].copy()
+            if len(df_plot) > 0:
+                log_vals = np.log10(df_plot[var_name].values)
+                vmin, vmax = np.percentile(log_vals, 2), np.percentile(log_vals, 98)
+                fig, ax = plt.subplots(figsize=(10, 8))
+                sc = ax.scatter(df_plot['X'], df_plot['Y'], c=log_vals, cmap='turbo', s=2, vmin=vmin, vmax=vmax)
+                cbar = plt.colorbar(sc, ax=ax, label=f'log₁₀({var_name})')
+                title_suffix = ' (escala log)'
+            else:
+                ctk.CTkLabel(self.plot_frame, text="Sem dados positivos").pack()
+                return
+        else:
+            vmin, vmax = df[var_name].quantile(0.02), df[var_name].quantile(0.98)
+            fig, ax = plt.subplots(figsize=(10, 8))
+            sc = ax.scatter(df['X'], df['Y'], c=df[var_name], cmap='turbo', s=2, vmin=vmin, vmax=vmax)
+            plt.colorbar(sc, ax=ax, label=var_name)
+            title_suffix = ''
+        
+        ax.set_title(f'Distribuição Espacial de {var_name}{title_suffix}')
         ax.set_xlabel('X (m)')
         ax.set_ylabel('Y (m)')
-        plt.colorbar(sc, ax=ax, label=var_name)
         plt.tight_layout()
+        
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            messagebox.showinfo("Sucesso", f"JPEG salvo:\n{save_path}")
+            return
         
         c = FigureCanvasTkAgg(fig, master=self.plot_frame)
         c.draw()
         c.get_tk_widget().pack(fill="both", expand=True)
+    
+    def export_spatial_jpeg(self):
+        filepath = filedialog.asksaveasfilename(
+            title="Salvar imagem JPEG",
+            defaultextension=".jpg",
+            filetypes=[("JPEG", "*.jpg"), ("Todos", "*.*")]
+        )
+        if not filepath:
+            return
+        try:
+            self.update_plot(None, save_path=filepath)
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+            print(f"[GammaPro] Erro: {e}")
     
     def show_eda(self):
         if self.data is None:
@@ -307,6 +353,7 @@ Y: {self.data['Y'].min():.2f} a {self.data['Y'].max():.2f}
         
         ctk.CTkButton(sel_frame, text="🔄 Plotar", command=lambda: self.update_eda_plot(nb, numeric_cols)).grid(row=0, column=2, padx=10)
         ctk.CTkButton(sel_frame, text="💾 GeoTIFF", command=lambda: self.export_current_map(self.eda_var_select.get(), self.data)).grid(row=0, column=3, padx=10)
+        ctk.CTkButton(sel_frame, text="📷 JPEG", command=lambda: self.export_eda_jpeg(nb, numeric_cols)).grid(row=0, column=4, padx=10)
         
         # Opções de corte
         opt_frame = ctk.CTkFrame(f0)
@@ -339,7 +386,7 @@ Y: {self.data['Y'].min():.2f} a {self.data['Y'].max():.2f}
         
         self.update_eda_plot(nb, numeric_cols)
     
-    def update_eda_plot(self, nb, numeric_cols):
+    def update_eda_plot(self, nb, numeric_cols, save_path=None):
         for w in self.eda_plot_frame.winfo_children():
             w.destroy()
         
@@ -409,9 +456,29 @@ Outliers: {((df[var_name] < lower) | (df[var_name] > upper)).sum():,}
         
         plt.tight_layout()
         
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            messagebox.showinfo("Sucesso", f"JPEG salvo:\n{save_path}")
+            return
+        
         c = FigureCanvasTkAgg(fig, master=self.eda_plot_frame)
         c.draw()
         c.get_tk_widget().pack(fill="both", expand=True)
+    
+    def export_eda_jpeg(self, nb, numeric_cols):
+        filepath = filedialog.asksaveasfilename(
+            title="Salvar imagem JPEG",
+            defaultextension=".jpg",
+            filetypes=[("JPEG", "*.jpg"), ("Todos", "*.*")]
+        )
+        if not filepath:
+            return
+        try:
+            self.update_eda_plot(nb, numeric_cols, save_path=filepath)
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+            print(f"[GammaPro] Erro: {e}")
     
     def apply_outlier_cut_pct(self, nb, numeric_cols):
         try:
@@ -528,40 +595,41 @@ Próximo passo: Usar "Índices e Razões" ou Exportar dados
             messagebox.showwarning("Aviso", "Processe os dados primeiro!")
             return
         
+        if 'Indice_Lateritico' not in self.df_processed.columns:
+            df = self.df_processed.copy()
+            
+            mask = (df['KPERC'].notna() & df['eU'].notna() & df['eTH'].notna() & 
+                    (df['KPERC'] > 0) & (df['eU'] > 0) & (df['eTH'] > 0))
+            df = df[mask].copy()
+            
+            if len(df) == 0:
+                messagebox.showerror("Erro", "Dados insuficientes para calcular índices")
+                return
+            
+            K_mean = df['KPERC'].mean()
+            eU_mean = df['eU'].mean()
+            eTh_mean = df['eTH'].mean()
+            K_std = df['KPERC'].std()
+            eU_std = df['eU'].std()
+            eTh_std = df['eTH'].std()
+            
+            df['Indice_Lateritico'] = (df['eTH'] * df['eU']) / (df['KPERC'] ** 2)
+            df['Calor_Radiogenico'] = (0.0256 * df['eU'] + 0.0157 * df['eTH'] + 0.0088 * df['KPERC'])
+            df['Fator_f'] = df['eTH'] / df['eU']
+            df['F_fator'] = (df['KPERC'] * df['eU']) / df['eTH']
+            df['Kd'] = df['KPERC'] / df['eTH']
+            df['Ud'] = df['eU'] / df['eTH']
+            df['eU_anomalo'] = (df['eU'] - eU_mean) / eU_std
+            df['eTh_anomalo'] = (df['eTH'] - eTh_mean) / eTh_std
+            df['K_anomalo'] = (df['KPERC'] - K_mean) / K_std
+            
+            self.df_processed = self.df_processed.merge(
+                df[['X', 'Y', 'Indice_Lateritico', 'Calor_Radiogenico', 'Fator_f', 'F_fator', 'Kd', 'Ud', 'eU_anomalo', 'eTh_anomalo', 'K_anomalo']],
+                on=['X', 'Y'], how='left'
+            )
+        
         for w in self.main_frame.winfo_children():
             w.destroy()
-        
-        df = self.df_processed.copy()
-        
-        mask = (df['KPERC'].notna() & df['eU'].notna() & df['eTH'].notna() & 
-                (df['KPERC'] > 0) & (df['eU'] > 0) & (df['eTH'] > 0))
-        df = df[mask].copy()
-        
-        if len(df) == 0:
-            messagebox.showerror("Erro", "Dados insuficientes para calcular índices")
-            return
-        
-        K_mean = df['KPERC'].mean()
-        eU_mean = df['eU'].mean()
-        eTh_mean = df['eTH'].mean()
-        K_std = df['KPERC'].std()
-        eU_std = df['eU'].std()
-        eTh_std = df['eTH'].std()
-        
-        df['Indice_Lateritico'] = df['eTH'] / (df['eU'] * df['KPERC'])
-        
-        df['Calor_Radiogenico'] = (0.0256 * df['eU'] + 0.0157 * df['eTH'] + 0.0088 * df['KPERC'])
-        
-        df['Fator_f'] = df['eTH'] / df['eU']
-        
-        df['eU_anomalo'] = (df['eU'] - eU_mean) / eU_std
-        df['eTh_anomalo'] = (df['eTH'] - eTh_mean) / eTh_std
-        df['K_anomalo'] = (df['KPERC'] - K_mean) / K_std
-        
-        self.df_processed = self.df_processed.merge(
-            df[['X', 'Y', 'Indice_Lateritico', 'Calor_Radiogenico', 'Fator_f', 'eU_anomalo', 'eTh_anomalo', 'K_anomalo']],
-            on=['X', 'Y'], how='left'
-        )
         
         nb = ttk.Notebook(self.main_frame)
         nb.pack(fill="both", expand=True, padx=10, pady=10)
@@ -585,7 +653,7 @@ DESVIOS PADRÃO:
   eU: {eU_std:.4f} ppm
   eTh: {eTh_std:.4f} ppm
 
-ÍNDICE LATERÍTICO (eTh / (eU × K)):
+ÍNDICE LATERÍTICO ((eTh × eU) / K²):
   Mín: {df['Indice_Lateritico'].min():.4f}
   Máx: {df['Indice_Lateritico'].max():.4f}
   Média: {df['Indice_Lateritico'].mean():.4f}
@@ -627,7 +695,8 @@ K ANÔMALO (z-score):
         
         self.indices_vars = [
             'Indice_Lateritico', 'Calor_Radiogenico', 'Fator_f',
-            'eU_anomalo', 'eTh_anomalo', 'K_anomalo', 'Ternario'
+            'eU_anomalo', 'eTh_anomalo', 'K_anomalo',
+            'F_fator', 'Kd', 'Ud', 'Ternario', 'Ternario Alteração'
         ]
         
         ctk.CTkLabel(sel_frame, text="Variável:").grid(row=0, column=0, padx=5)
@@ -637,6 +706,14 @@ K ANÔMALO (z-score):
         
         ctk.CTkButton(sel_frame, text="🔄 Plotar", command=self.plot_indices).grid(row=0, column=2, padx=10)
         ctk.CTkButton(sel_frame, text="💾 GeoTIFF", command=self.export_current_indices_map).grid(row=0, column=3, padx=10)
+        ctk.CTkButton(sel_frame, text="📷 JPEG", command=self.export_indices_jpeg).grid(row=0, column=4, padx=10)
+        
+        ctk.CTkLabel(sel_frame, text="Escala:").grid(row=0, column=5, padx=(20, 5))
+        self.scale_var = ctk.StringVar(value="normal")
+        self.scale_normal = ctk.CTkRadioButton(sel_frame, text="Normal", variable=self.scale_var, value="normal")
+        self.scale_normal.grid(row=0, column=6, padx=5)
+        self.scale_log = ctk.CTkRadioButton(sel_frame, text="log10", variable=self.scale_var, value="log")
+        self.scale_log.grid(row=0, column=7, padx=5)
         
         self.idx_plot_frame = ctk.CTkFrame(self.indices_plot_frame)
         self.idx_plot_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -645,14 +722,17 @@ K ANÔMALO (z-score):
         
         print("[GammaPro v1.01] Índices calculados com sucesso")
     
-    def plot_indices(self):
+    def plot_indices(self, save_path=None):
         for w in self.idx_plot_frame.winfo_children():
             w.destroy()
         
         var_name = self.idx_var_select.get()
         
         if var_name == 'Ternario':
-            self.plot_ternary()
+            self.plot_ternary(save_path=save_path)
+            return
+        elif var_name == 'Ternario Alteração':
+            self.plot_ternary_alteration(save_path=save_path)
             return
         
         df = self.df_processed.dropna(subset=['X', 'Y', var_name])
@@ -661,21 +741,57 @@ K ANÔMALO (z-score):
             ctk.CTkLabel(self.idx_plot_frame, text="Sem dados para plotar").pack()
             return
         
-        vmin, vmax = df[var_name].quantile(0.02), df[var_name].quantile(0.98)
+        formulas = {
+            'Indice_Lateritico': 'IL = (eTh × eU) / K²',
+            'Calor_Radiogenico': 'H = 0.0256×eU + 0.0157×eTh + 0.0088×K',
+            'Fator_f': 'f = eTh / eU',
+            'F_fator': 'F = (K × eU) / eTh',
+            'Kd': 'Kd = K / eTh',
+            'Ud': 'Ud = eU / eTh',
+            'eU_anomalo': 'z = (eU - μ) / σ',
+            'eTh_anomalo': 'z = (eTh - μ) / σ',
+            'K_anomalo': 'z = (K - μ) / σ'
+        }
         
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sc = ax.scatter(df['X'], df['Y'], c=df[var_name], cmap='turbo', s=3, vmin=vmin, vmax=vmax)
-        ax.set_title(f'{var_name}')
+        formula = formulas.get(var_name, '')
+        
+        use_log = self.scale_var.get() == "log" and var_name not in ['Ternario', 'Ternario Alteração']
+        
+        if use_log:
+            df_plot = df[df[var_name] > 0].copy()
+            if len(df_plot) > 0:
+                log_vals = np.log10(df_plot[var_name].values)
+                vmin, vmax = np.percentile(log_vals, 2), np.percentile(log_vals, 98)
+                fig, ax = plt.subplots(figsize=(10, 8))
+                sc = ax.scatter(df_plot['X'], df_plot['Y'], c=log_vals, cmap='turbo', s=3, vmin=vmin, vmax=vmax)
+                cbar = plt.colorbar(sc, ax=ax, label=f'log₁₀({var_name})')
+                title_scale = ' (escala log)'
+            else:
+                ctk.CTkLabel(self.idx_plot_frame, text="Sem dados positivos").pack()
+                return
+        else:
+            vmin, vmax = df[var_name].quantile(0.02), df[var_name].quantile(0.98)
+            fig, ax = plt.subplots(figsize=(10, 8))
+            sc = ax.scatter(df['X'], df['Y'], c=df[var_name], cmap='turbo', s=3, vmin=vmin, vmax=vmax)
+            plt.colorbar(sc, ax=ax, label=var_name)
+            title_scale = ''
+        
+        ax.set_title(f'{var_name}{title_scale}\n{formula}' if formula else var_name)
         ax.set_xlabel('X (m)')
         ax.set_ylabel('Y (m)')
-        plt.colorbar(sc, ax=ax, label=var_name)
         plt.tight_layout()
+        
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            messagebox.showinfo("Sucesso", f"JPEG salvo:\n{save_path}")
+            return
         
         c = FigureCanvasTkAgg(fig, master=self.idx_plot_frame)
         c.draw()
         c.get_tk_widget().pack(fill="both", expand=True)
     
-    def plot_ternary(self):
+    def plot_ternary(self, save_path=None):
         df = self.df_processed.dropna(subset=['X', 'Y', 'KPERC', 'eU', 'eTH'])
         df = df[(df['KPERC'] > 0) & (df['eU'] > 0) & (df['eTH'] > 0)]
         
@@ -710,6 +826,12 @@ K ANÔMALO (z-score):
         self.add_ternary_legend(ax)
         
         plt.tight_layout()
+        
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            messagebox.showinfo("Sucesso", f"JPEG salvo:\n{save_path}")
+            return
         
         c = FigureCanvasTkAgg(fig, master=self.idx_plot_frame)
         c.draw()
@@ -774,6 +896,110 @@ K ANÔMALO (z-score):
         ]
         ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
     
+    def plot_ternary_alteration(self, save_path=None):
+        df = self.df_processed.dropna(subset=['X', 'Y', 'F_fator', 'Kd', 'Ud'])
+        df = df[(df['F_fator'].notna()) & (df['Kd'].notna()) & (df['Ud'].notna())]
+        
+        if len(df) == 0:
+            ctk.CTkLabel(self.idx_plot_frame, text="Sem dados para plotar").pack()
+            return
+        
+        F_vals = df['F_fator'].values
+        Kd_vals = df['Kd'].values
+        Ud_vals = df['Ud'].values
+        
+        F_p = np.percentile(F_vals[F_vals > 0], [2, 98]) if (F_vals > 0).sum() > 0 else [0, 1]
+        Kd_p = np.percentile(Kd_vals[Kd_vals > 0], [2, 98]) if (Kd_vals > 0).sum() > 0 else [0, 1]
+        Ud_p = np.percentile(Ud_vals[Ud_vals > 0], [2, 98]) if (Ud_vals > 0).sum() > 0 else [0, 1]
+        
+        F_norm = (F_vals - F_p[0]) / (F_p[1] - F_p[0]) if F_p[1] != F_p[0] else np.zeros_like(F_vals)
+        Kd_norm = (Kd_vals - Kd_p[0]) / (Kd_p[1] - Kd_p[0]) if Kd_p[1] != Kd_p[0] else np.zeros_like(Kd_vals)
+        Ud_norm = (Ud_vals - Ud_p[0]) / (Ud_p[1] - Ud_p[0]) if Ud_p[1] != Ud_p[0] else np.zeros_like(Ud_vals)
+        
+        F_norm = np.clip(F_norm, 0, 1)
+        Kd_norm = np.clip(Kd_norm, 0, 1)
+        Ud_norm = np.clip(Ud_norm, 0, 1)
+        
+        colors = np.column_stack([F_norm, Kd_norm, Ud_norm])
+        
+        fig, ax = plt.subplots(figsize=(10, 8))
+        scatter = ax.scatter(df['X'], df['Y'], c=colors, s=3)
+        ax.set_title('Mapa Ternário de Alteração Hidrotermal (R=F, G=Kd, B=Ud)')
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        
+        self.add_ternary_alteration_legend(ax)
+        
+        plt.tight_layout()
+        
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            messagebox.showinfo("Sucesso", f"JPEG salvo:\n{save_path}")
+            return
+        
+        c = FigureCanvasTkAgg(fig, master=self.idx_plot_frame)
+        c.draw()
+        c.get_tk_widget().pack(fill="both", expand=True)
+    
+    def add_ternary_alteration_legend(self, ax):
+        from matplotlib.lines import Line2D
+        
+        legend_x = ax.get_xlim()[1] - (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.15
+        legend_y = ax.get_ylim()[0] + (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.15
+        size = (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.12
+        
+        triangle = np.array([
+            [0, size],
+            [size * np.cos(np.radians(30)), size * 0.5],
+            [0, 0],
+            [0, size]
+        ])
+        
+        for i in range(50):
+            t = i / 50
+            line = plt.Line2D(
+                [legend_x + triangle[0,0] * (1-t) + triangle[1,0] * t,
+                 legend_x + triangle[2,0] * (1-t) + triangle[3,0] * t],
+                [legend_y + triangle[0,1] * (1-t) + triangle[1,1] * t,
+                 legend_y + triangle[2,1] * (1-t) + triangle[3,1] * t],
+                color='black', linewidth=0.3, alpha=0.3
+            )
+            ax.add_line(line)
+        
+        for i in range(50):
+            t = i / 50
+            line = plt.Line2D(
+                [legend_x + triangle[0,0] * (1-t) + triangle[1,0] * t,
+                 legend_x + triangle[2,0]],
+                [legend_y + triangle[0,1] * (1-t) + triangle[1,1] * t,
+                 legend_y + triangle[2,1]],
+                color='black', linewidth=0.3, alpha=0.3
+            )
+            ax.add_line(line)
+        
+        for i in range(50):
+            t = i / 50
+            line = plt.Line2D(
+                [legend_x + triangle[1,0],
+                 legend_x + triangle[2,0] * (1-t) + triangle[3,0] * t],
+                [legend_y + triangle[1,1],
+                 legend_y + triangle[2,1] * (1-t) + triangle[3,1] * t],
+                color='black', linewidth=0.3, alpha=0.3
+            )
+            ax.add_line(line)
+        
+        ax.text(legend_x - size*0.15, legend_y - size*0.08, 'Ud', fontsize=10, fontweight='bold', color='blue')
+        ax.text(legend_x + size*0.55, legend_y - size*0.08, 'F', fontsize=10, fontweight='bold', color='red')
+        ax.text(legend_x + size*0.2, legend_y + size*1.05, 'Kd', fontsize=10, fontweight='bold', color='green')
+        
+        legend_elements = [
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='F (Fator Efimov)'),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label='Kd (K normalizado)'),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label='Ud (U normalizado)')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
+    
     def export_current_map(self, var_name, df_source):
         if df_source is None or var_name is None:
             return
@@ -824,7 +1050,10 @@ K ANÔMALO (z-score):
         var_name = self.idx_var_select.get()
         
         if var_name == 'Ternario':
-            messagebox.showinfo("Aviso", "Mapa ternário não pode ser exportado como GeoTIFF")
+            self.export_ternary_geotiff('Ternario')
+            return
+        elif var_name == 'Ternario Alteração':
+            self.export_ternary_geotiff('Ternario Alteração')
             return
         
         output_dir = filedialog.askdirectory(title="Selecionar diretório para salvar")
@@ -866,6 +1095,121 @@ K ANÔMALO (z-score):
             messagebox.showerror("Erro", str(e))
             print(f"[GammaPro] Erro: {e}")
     
+    def export_ternary_geotiff(self, ternary_type):
+        if self.df_processed is None:
+            return
+        
+        output_dir = filedialog.askdirectory(title="Selecionar diretório para salvar")
+        if not output_dir:
+            return
+        
+        try:
+            cell = float(self.entry_cell.get())
+            epsg = int(self.entry_epsg.get())
+            
+            if ternary_type == 'Ternario':
+                df = self.df_processed.dropna(subset=['X', 'Y', 'KPERC', 'eU', 'eTH'])
+                df = df[(df['KPERC'] > 0) & (df['eU'] > 0) & (df['eTH'] > 0)]
+                
+                K_vals = df['KPERC'].values
+                eU_vals = df['eU'].values
+                eTh_vals = df['eTH'].values
+                
+                K_p = np.percentile(K_vals, [2, 98])
+                eU_p = np.percentile(eU_vals, [2, 98])
+                eTh_p = np.percentile(eTh_vals, [2, 98])
+                
+                K_norm = (K_vals - K_p[0]) / (K_p[1] - K_p[0])
+                eU_norm = (eU_vals - eU_p[0]) / (eU_p[1] - eU_p[0])
+                eTh_norm = (eTh_vals - eTh_p[0]) / (eTh_p[1] - eTh_p[0])
+                
+                K_norm = np.clip(K_norm, 0, 1)
+                eU_norm = np.clip(eU_norm, 0, 1)
+                eTh_norm = np.clip(eTh_norm, 0, 1)
+                
+                r = eU_norm
+                g = eTh_norm
+                b = K_norm
+                name = "ternario_K_eU_eTh"
+                
+            elif ternary_type == 'Ternario Alteração':
+                df = self.df_processed.dropna(subset=['X', 'Y', 'F_fator', 'Kd', 'Ud'])
+                df = df[(df['F_fator'].notna()) & (df['Kd'].notna()) & (df['Ud'].notna())]
+                
+                F_vals = df['F_fator'].values
+                Kd_vals = df['Kd'].values
+                Ud_vals = df['Ud'].values
+                
+                F_p = np.percentile(F_vals[F_vals > 0], [2, 98]) if (F_vals > 0).sum() > 0 else [0, 1]
+                Kd_p = np.percentile(Kd_vals[Kd_vals > 0], [2, 98]) if (Kd_vals > 0).sum() > 0 else [0, 1]
+                Ud_p = np.percentile(Ud_vals[Ud_vals > 0], [2, 98]) if (Ud_vals > 0).sum() > 0 else [0, 1]
+                
+                F_norm = (F_vals - F_p[0]) / (F_p[1] - F_p[0]) if F_p[1] != F_p[0] else np.zeros_like(F_vals)
+                Kd_norm = (Kd_vals - Kd_p[0]) / (Kd_p[1] - Kd_p[0]) if Kd_p[1] != Kd_p[0] else np.zeros_like(Kd_vals)
+                Ud_norm = (Ud_vals - Ud_p[0]) / (Ud_p[1] - Ud_p[0]) if Ud_p[1] != Ud_p[0] else np.zeros_like(Ud_vals)
+                
+                F_norm = np.clip(F_norm, 0, 1)
+                Kd_norm = np.clip(Kd_norm, 0, 1)
+                Ud_norm = np.clip(Ud_norm, 0, 1)
+                
+                r = F_norm
+                g = Kd_norm
+                b = Ud_norm
+                name = "ternario_alteracao_F_Kd_Ud"
+            
+            if len(df) == 0:
+                messagebox.showerror("Erro", "Sem dados para exportar")
+                return
+            
+            x_min, x_max = df['X'].min() - 1000, df['X'].max() + 1000
+            y_min, y_max = df['Y'].min() - 1000, df['Y'].max() + 1000
+            
+            ncols = int((x_max - x_min) / cell)
+            nrows = int((y_max - y_min) / cell)
+            
+            xi = np.linspace(x_min, x_max, ncols)
+            yi = np.linspace(y_max, y_min, nrows)
+            xi, yi = np.meshgrid(xi, yi)
+            
+            r_grid = griddata((df['X'].values, df['Y'].values), r, (xi, yi), method='cubic')
+            g_grid = griddata((df['X'].values, df['Y'].values), g, (xi, yi), method='cubic')
+            b_grid = griddata((df['X'].values, df['Y'].values), b, (xi, yi), method='cubic')
+            
+            fname = os.path.join(output_dir, f"gamma_{name}_{int(cell)}m.tif")
+            tr = from_origin(x_min, y_max, cell, cell)
+            with rasterio.open(fname, 'w', driver='GTiff', height=nrows, width=ncols,
+                              count=3, dtype=np.float32, crs=pyproj.CRS.from_epsg(epsg), transform=tr, nodata=np.nan) as dst:
+                dst.write(r_grid.astype(np.float32), 1)
+                dst.write(g_grid.astype(np.float32), 2)
+                dst.write(b_grid.astype(np.float32), 3)
+            
+            messagebox.showinfo("Sucesso", f"GeoTIFF RGB salvo:\n{fname}")
+            print(f"[GammaPro] GeoTIFF RGB salvo: {fname}")
+            
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+            print(f"[GammaPro] Erro: {e}")
+    
+    def export_indices_jpeg(self):
+        if self.df_processed is None:
+            return
+        
+        var_name = self.idx_var_select.get()
+        
+        filepath = filedialog.asksaveasfilename(
+            title="Salvar imagem JPEG",
+            defaultextension=".jpg",
+            filetypes=[("JPEG", "*.jpg"), ("Todos", "*.*")]
+        )
+        if not filepath:
+            return
+        
+        try:
+            self.plot_indices(save_path=filepath)
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+            print(f"[GammaPro] Erro: {e}")
+    
     def export_data(self):
         if self.df_processed is None:
             return
@@ -882,158 +1226,67 @@ K ANÔMALO (z-score):
         
         ctk.CTkLabel(opt_frame, text="📦 Exportar Dados", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=20)
         
-        ctk.CTkLabel(opt_frame, text="Selecione os formatos de saída:").pack(pady=10)
+        ctk.CTkLabel(opt_frame, text="Selecione o formato de saída:").pack(pady=10)
         
         self.var_csv = ctk.BooleanVar(value=True)
-        self.var_tif = ctk.BooleanVar(value=True)
         self.var_xlsx = ctk.BooleanVar(value=False)
         
-        ctk.CTkCheckBox(opt_frame, text="CSV (dados processados)", variable=self.var_csv).pack(pady=5)
-        ctk.CTkCheckBox(opt_frame, text="Excel (dados processados)", variable=self.var_xlsx).pack(pady=5)
-        ctk.CTkCheckBox(opt_frame, text="GeoTIFF (grids interpolados)", variable=self.var_tif).pack(pady=5)
+        ctk.CTkCheckBox(opt_frame, text="CSV", variable=self.var_csv).pack(pady=2)
+        ctk.CTkCheckBox(opt_frame, text="Excel", variable=self.var_xlsx).pack(pady=2)
         
-        self.var_k = ctk.BooleanVar(value=True)
-        self.var_eu = ctk.BooleanVar(value=True)
-        self.var_eth = ctk.BooleanVar(value=True)
-        self.var_eu_eth = ctk.BooleanVar(value=True)
-        self.var_eu_k = ctk.BooleanVar(value=True)
-        self.var_eth_k = ctk.BooleanVar(value=True)
+        ctk.CTkLabel(opt_frame, text="Selecione as colunas para exportar:").pack(pady=(20, 5))
         
-        self.var_indice_lat = ctk.BooleanVar(value=False)
-        self.var_calor = ctk.BooleanVar(value=False)
-        self.var_fator_f = ctk.BooleanVar(value=False)
-        self.var_eU_anomalo = ctk.BooleanVar(value=False)
-        self.var_eTh_anomalo = ctk.BooleanVar(value=False)
-        self.var_K_anomalo = ctk.BooleanVar(value=False)
+        cols_frame = ctk.CTkScrollableFrame(opt_frame, height=300)
+        cols_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
-        ctk.CTkLabel(opt_frame, text="Variáveis para GeoTIFF:").pack(pady=(20, 5))
+        all_cols = list(self.df_processed.columns)
+        self.col_vars = {}
         
-        ctk.CTkLabel(opt_frame, text="Básicas:").pack(pady=(5, 0))
-        ctk.CTkCheckBox(opt_frame, text="K (%)", variable=self.var_k).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="eU (ppm)", variable=self.var_eu).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="eTh (ppm)", variable=self.var_eth).pack(pady=2)
+        for i, col in enumerate(all_cols):
+            var = ctk.BooleanVar(value=True)
+            self.col_vars[col] = var
+            ctk.CTkCheckBox(cols_frame, text=col, variable=var).pack(anchor="w", pady=1)
         
-        ctk.CTkLabel(opt_frame, text="Razões:").pack(pady=(5, 0))
-        ctk.CTkCheckBox(opt_frame, text="eU/eTh", variable=self.var_eu_eth).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="eU/K", variable=self.var_eu_k).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="eTh/K", variable=self.var_eth_k).pack(pady=2)
+        btn_frame = ctk.CTkFrame(opt_frame)
+        btn_frame.pack(pady=10)
         
-        ctk.CTkLabel(opt_frame, text="Índices:").pack(pady=(5, 0))
-        ctk.CTkCheckBox(opt_frame, text="Índice Laterítico", variable=self.var_indice_lat).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="Calor Radiogênico", variable=self.var_calor).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="Fator f", variable=self.var_fator_f).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="eU Anômalo", variable=self.var_eU_anomalo).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="eTh Anômalo", variable=self.var_eTh_anomalo).pack(pady=2)
-        ctk.CTkCheckBox(opt_frame, text="K Anômalo", variable=self.var_K_anomalo).pack(pady=2)
-        
-        ctk.CTkButton(opt_frame, text="💾 Exportar", command=self.do_export, height=40).pack(pady=20)
+        ctk.CTkButton(btn_frame, text="Selecionar Todos", command=self.select_all_cols, fg_color="#28a745").pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Desmarcar Todos", command=self.deselect_all_cols, fg_color="#dc3545").pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="💾 Exportar", command=self.do_export, height=40).pack(side="left", padx=20)
+    
+    def select_all_cols(self):
+        for var in self.col_vars.values():
+            var.set(True)
+    
+    def deselect_all_cols(self):
+        for var in self.col_vars.values():
+            var.set(False)
     
     def do_export(self):
         print(f"[GammaPro] Exportando para: {self.output_dir}")
         
         try:
+            selected_cols = [col for col, var in self.col_vars.items() if var.get()]
+            
+            if not selected_cols:
+                messagebox.showerror("Erro", "Selecione pelo menos uma coluna")
+                return
+            
+            df_export = self.df_processed[selected_cols].copy()
+            
             exported = []
             
             if self.var_csv.get():
                 csv_file = os.path.join(self.output_dir, "gamma_data.csv")
-                self.df_processed.to_csv(csv_file, index=False)
+                df_export.to_csv(csv_file, index=False)
                 exported.append(f"CSV: {csv_file}")
                 print(f"[GammaPro] CSV salvo: {csv_file}")
             
             if self.var_xlsx.get():
                 xlsx_file = os.path.join(self.output_dir, "gamma_data.xlsx")
-                self.df_processed.to_excel(xlsx_file, index=False)
+                df_export.to_excel(xlsx_file, index=False)
                 exported.append(f"Excel: {xlsx_file}")
                 print(f"[GammaPro] Excel salvo: {xlsx_file}")
-            
-            if self.var_tif.get():
-                cell = float(self.entry_cell.get())
-                epsg = int(self.entry_epsg.get())
-                
-                mask = ~self.df_processed['X'].isna() & ~self.df_processed['Y'].isna()
-                df = self.df_processed[mask].copy()
-                
-            x_min, x_max = df['X'].min() - 1000, df['X'].max() + 1000
-            y_min, y_max = df['Y'].min() - 1000, df['Y'].max() + 1000
-            
-            ncols = int((x_max - x_min) / cell)
-            nrows = int((y_max - y_min) / cell)
-            
-            xi = np.linspace(x_min, x_max, ncols)
-            yi = np.linspace(y_max, y_min, nrows)
-            xi, yi = np.meshgrid(xi, yi)
-            
-            vars_dict = {}
-            if self.var_k.get():
-                vars_dict['K'] = df['K_display'].values
-                if self.var_eu.get():
-                    vars_dict['eU'] = df['eU_display'].values
-                if self.var_eth.get():
-                    vars_dict['eTh'] = df['eTh_display'].values
-                
-                grids = {}
-                for name, vals in vars_dict.items():
-                    print(f"[GammaPro] Interpolando {name}...")
-                    grids[name] = griddata((df['X'].values, df['Y'].values), vals, (xi, yi), method='cubic')
-                
-                if self.var_eu_eth.get() and 'eU' in grids and 'eTh' in grids:
-                    grids['eU_eTh_ratio'] = np.divide(grids['eU'], grids['eTh'], out=np.full_like(grids['eU'], np.nan), where=grids['eTh'] != 0)
-                if self.var_eu_k.get() and 'eU' in grids and 'K' in grids:
-                    grids['eU_K_ratio'] = np.divide(grids['eU'], grids['K'], out=np.full_like(grids['eU'], np.nan), where=grids['K'] != 0)
-                if self.var_eth_k.get() and 'eTh' in grids and 'K' in grids:
-                    grids['eTh_K_ratio'] = np.divide(grids['eTh'], grids['K'], out=np.full_like(grids['eTh'], np.nan), where=grids['K'] != 0)
-                
-                if self.var_indice_lat.get():
-                    mask_idx = ~df['Indice_Lateritico'].isna()
-                    if mask_idx.sum() > 0:
-                        grids['Indice_Lateritico'] = griddata(
-                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
-                            df.loc[mask_idx, 'Indice_Lateritico'].values, (xi, yi), method='cubic'
-                        )
-                if self.var_calor.get():
-                    mask_idx = ~df['Calor_Radiogenico'].isna()
-                    if mask_idx.sum() > 0:
-                        grids['Calor_Radiogenico'] = griddata(
-                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
-                            df.loc[mask_idx, 'Calor_Radiogenico'].values, (xi, yi), method='cubic'
-                        )
-                if self.var_fator_f.get():
-                    mask_idx = ~df['Fator_f'].isna()
-                    if mask_idx.sum() > 0:
-                        grids['Fator_f'] = griddata(
-                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
-                            df.loc[mask_idx, 'Fator_f'].values, (xi, yi), method='cubic'
-                        )
-                if self.var_eU_anomalo.get():
-                    mask_idx = ~df['eU_anomalo'].isna()
-                    if mask_idx.sum() > 0:
-                        grids['eU_anomalo'] = griddata(
-                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
-                            df.loc[mask_idx, 'eU_anomalo'].values, (xi, yi), method='cubic'
-                        )
-                if self.var_eTh_anomalo.get():
-                    mask_idx = ~df['eTh_anomalo'].isna()
-                    if mask_idx.sum() > 0:
-                        grids['eTh_anomalo'] = griddata(
-                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
-                            df.loc[mask_idx, 'eTh_anomalo'].values, (xi, yi), method='cubic'
-                        )
-                if self.var_K_anomalo.get():
-                    mask_idx = ~df['K_anomalo'].isna()
-                    if mask_idx.sum() > 0:
-                        grids['K_anomalo'] = griddata(
-                            (df.loc[mask_idx, 'X'].values, df.loc[mask_idx, 'Y'].values),
-                            df.loc[mask_idx, 'K_anomalo'].values, (xi, yi), method='cubic'
-                        )
-                
-                for name, grid in grids.items():
-                    fname = os.path.join(self.output_dir, f"gamma_{name}_{int(cell)}m.tif")
-                    tr = from_origin(x_min, y_max, cell, cell)
-                    with rasterio.open(fname, 'w', driver='GTiff', height=grid.shape[0], width=grid.shape[1],
-                                      count=1, dtype=np.float32, crs=pyproj.CRS.from_epsg(epsg), transform=tr, nodata=np.nan) as dst:
-                        dst.write(grid.astype(np.float32), 1)
-                    exported.append(f"GeoTIFF: {fname}")
-                    print(f"[GammaPro] GeoTIFF salvo: {fname}")
             
             messagebox.showinfo("Sucesso", "Exportação concluída!\n\n" + "\n".join(exported))
             print("[GammaPro] Exportação concluída")
@@ -1052,6 +1305,30 @@ K ANÔMALO (z-score):
             traceback.print_exc()
 
 
+    def reiniciar_app(self):
+        """Reinicia a aplicação, limpando dados e voltando à tela inicial"""
+        print("[GammaPro] Reiniciando aplicação...")
+        
+        self.data = None
+        self.df_processed = None
+        self.original_data = None
+        self.output_dir = ""
+        
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+        
+        self.lbl_status = ctk.CTkLabel(self.main_frame, text="Bem-vindo ao GammaPro v1.01!\nCarregue um arquivo XYZ para começar.", font=ctk.CTkFont(size=16))
+        self.lbl_status.place(relx=0.5, rely=0.4, anchor="center")
+        
+        self.btn_dados.configure(state="disabled")
+        self.btn_eda.configure(state="disabled")
+        self.btn_processar.configure(state="normal")
+        self.btn_indices.configure(state="disabled")
+        self.btn_exportar.configure(state="disabled")
+        
+        print("[GammaPro] Aplicação reiniciada com sucesso")
+
+
 def main():
     print("Iniciando GammaPro v1.03...")
     try:
@@ -1062,7 +1339,6 @@ def main():
         import traceback
         traceback.print_exc()
         input("Pressione Enter para sair...")
-
 
 if __name__ == "__main__":
     main()
