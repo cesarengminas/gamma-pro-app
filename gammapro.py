@@ -1,6 +1,6 @@
 """
-GammaPro v1.01 - Processamento de Dados de Gamaespectrometria
-Inclui: Índice Laterítico, Calor Radiogênico, Fator f, Mapa Ternário, eU/eTh/K Anômalos
+GammaPro v1.03 - Processamento de Dados de Gamaespectrometria
+Inclui: Índice Laterítico, Calor Radiogênico, Fator f, Mapa Ternário, eU/eTh/K Anômalos, Export JPEG, Escala Log
 """
 
 import os
@@ -48,7 +48,7 @@ class GammaProApp(ctk.CTk):
         self.sidebar = ctk.CTkFrame(self, width=280, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
-        self.logo_label = ctk.CTkLabel(self.sidebar, text="GAMMAPRO\nv1.01", font=ctk.CTkFont(size=24, weight="bold"))
+        self.logo_label = ctk.CTkLabel(self.sidebar, text="GAMMAPRO\nv1.03", font=ctk.CTkFont(size=24, weight="bold"))
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
         
         self.btn_carregar = ctk.CTkButton(self.sidebar, text="📂 Carregar Arquivo", command=self.load_file, height=40)
@@ -94,7 +94,7 @@ class GammaProApp(ctk.CTk):
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         
-        self.lbl_status = ctk.CTkLabel(self.main_frame, text="Bem-vindo ao GammaPro v1.01!\nCarregue um arquivo XYZ para começar.", font=ctk.CTkFont(size=16))
+        self.lbl_status = ctk.CTkLabel(self.main_frame, text="Bem-vindo ao GammaPro v1.03!\nCarregue um arquivo XYZ para começar.", font=ctk.CTkFont(size=16))
         self.lbl_status.place(relx=0.5, rely=0.4, anchor="center")
     
     def load_file(self):
@@ -720,7 +720,7 @@ K ANÔMALO (z-score):
         
         self.plot_indices()
         
-        print("[GammaPro v1.01] Índices calculados com sucesso")
+        print("[GammaPro v1.03] Índices calculados com sucesso")
     
     def plot_indices(self, save_path=None):
         for w in self.idx_plot_frame.winfo_children():
@@ -1317,7 +1317,7 @@ K ANÔMALO (z-score):
         for widget in self.main_frame.winfo_children():
             widget.destroy()
         
-        self.lbl_status = ctk.CTkLabel(self.main_frame, text="Bem-vindo ao GammaPro v1.01!\nCarregue um arquivo XYZ para começar.", font=ctk.CTkFont(size=16))
+        self.lbl_status = ctk.CTkLabel(self.main_frame, text="Bem-vindo ao GammaPro v1.03!\nCarregue um arquivo XYZ para começar.", font=ctk.CTkFont(size=16))
         self.lbl_status.place(relx=0.5, rely=0.4, anchor="center")
         
         self.btn_dados.configure(state="disabled")
